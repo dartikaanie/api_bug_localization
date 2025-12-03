@@ -40,81 +40,6 @@ class CreateProjectRequest(BaseModel):
 def _uid(user):
     return user["uid"] if isinstance(user, dict) else getattr(user, "uid", None)
 
-
-
-@router.get("/{organization}/{project}")
-async def get_users_in_project(organization: str, project: str, user=Depends(get_current_user)):
-    
-    
-    """
-    Return list of users assigned to a project.
-    Firestore document name is concatenation of organization + project (lowercase + underscore).
-    """
-    
-    uid = _uid(user)
-    if not uid:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-
-    db = get_db()
-
-    # normalisasi nama dokumen
-    doc_ref = (
-        db.collection("organizations")
-        .document(organization)
-        .collection("projects")
-        .document(project)
-    )
-
-    doc = doc_ref.get()
-
-    if not doc.exists:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project '{project}' in organization '{organization}' not found",
-        )
-
-    data: Dict[str, Any] = doc.to_dict() or {}
-    member_uids: List[str] = data.get("members", [])
-
-    members_detail = []
-
-    for uid in member_uids:
-        user_ref = db.collection("users").document(uid)
-        user_doc = user_ref.get()
-
-        if user_doc.exists:
-            udata = user_doc.to_dict() or {}
-
-            roles = udata.get("roles", []) or []
-            primary_role = roles[0] if roles else None
-
-            members_detail.append({
-                "uid": uid,
-                "email": udata.get("email"),
-                "display_name": udata.get("display_name"),
-                "roles": roles,
-                "primary_role": primary_role,
-                # kalau mau ikut balikin info project user juga:
-                "projects": udata.get("projects", []),
-            })
-        else:
-            # user id ada di members tapi dokumen user hilang
-            members_detail.append({
-                "uid": uid,
-                "email": None,
-                "display_name": None,
-                "roles": [],
-                "primary_role": None,
-                "projects": [],
-            })
-
-    return {
-        "organization": organization,
-        "project": project,
-        "count": len(members_detail),
-        "members": members_detail,
-    }
     
 @router.post("/createProjects", summary="Create project (simple write)")
 async def create_project_endpoint(req: CreateProjectRequest,   bg: BackgroundTasks, user=Depends(get_current_user)):
@@ -481,5 +406,81 @@ async def add_project_member(
         "email": payload.email,
         "role": payload.role or "member",
         "message": "User added to project successfully",
+    }
+    
+    
+
+@router.get("/{organization}/{project}")
+async def get_users_in_project(organization: str, project: str, user=Depends(get_current_user)):
+    
+    
+    """
+    Return list of users assigned to a project.
+    Firestore document name is concatenation of organization + project (lowercase + underscore).
+    """
+    
+    uid = _uid(user)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+    db = get_db()
+
+    # normalisasi nama dokumen
+    doc_ref = (
+        db.collection("organizations")
+        .document(organization)
+        .collection("projects")
+        .document(project)
+    )
+
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project '{project}' in organization '{organization}' not found",
+        )
+
+    data: Dict[str, Any] = doc.to_dict() or {}
+    member_uids: List[str] = data.get("members", [])
+
+    members_detail = []
+
+    for uid in member_uids:
+        user_ref = db.collection("users").document(uid)
+        user_doc = user_ref.get()
+
+        if user_doc.exists:
+            udata = user_doc.to_dict() or {}
+
+            roles = udata.get("roles", []) or []
+            primary_role = roles[0] if roles else None
+
+            members_detail.append({
+                "uid": uid,
+                "email": udata.get("email"),
+                "display_name": udata.get("display_name"),
+                "roles": roles,
+                "primary_role": primary_role,
+                # kalau mau ikut balikin info project user juga:
+                "projects": udata.get("projects", []),
+            })
+        else:
+            # user id ada di members tapi dokumen user hilang
+            members_detail.append({
+                "uid": uid,
+                "email": None,
+                "display_name": None,
+                "roles": [],
+                "primary_role": None,
+                "projects": [],
+            })
+
+    return {
+        "organization": organization,
+        "project": project,
+        "count": len(members_detail),
+        "members": members_detail,
     }
     
