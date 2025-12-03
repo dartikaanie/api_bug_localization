@@ -9,6 +9,7 @@ from app.services.project_service import (
     get_project,
     get_ml_status,
     check_ml_environment,
+    check_project_status
 )
 from app.services.ml_runner_service import schedule_pipeline_for_project
 import os
@@ -409,6 +410,26 @@ async def add_project_member(
     }
     
     
+
+@router.get("/{org}/{proj}/status")
+async def project_status(org: str, proj: str, user = Depends(get_current_user) ) :
+    current_step, steps = await check_project_status(org, proj)
+    
+    uid = getattr(user, "uid", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        proj_info = await get_project(org, proj)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    return {
+        "organization": org,
+        "project": proj,
+        "current_step": current_step,
+        "steps": steps
+    }
 
 @router.get("/{organization}/{project}")
 async def get_users_in_project(organization: str, project: str, user=Depends(get_current_user)):

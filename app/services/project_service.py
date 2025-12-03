@@ -1,5 +1,6 @@
 # app/services/project_service.py
 import re
+import os
 from typing import Dict, Any
 from firebase_admin import firestore
 from app.core.firebase import db
@@ -9,6 +10,9 @@ from typing import Dict, Any
 
 from neo4j import GraphDatabase
 from app.config import settings
+from app.helper import _dbname
+
+from app.core.neo4j_conn import get_driver
 
 # sudah ada sebelumnya:
 ML_ENGINE_DIR = Path(settings.ML_ENGINE_DIR)
@@ -198,3 +202,45 @@ def check_ml_environment(database_name: str) -> Dict[str, Any]:
         result["neo4j_error"] = f"{e.__class__.__name__}: {e}"
 
     return result
+
+def _model_path(org: str, proj: str):
+    base = f"{org}{proj}".lower()
+    return f"{ML_ENGINE_DIR}/out_lda/{base}/lda_sklearn_model_meta.npz"
+
+def _datasource_path(org: str, proj: str):
+    base = f"{org}{proj}".lower()
+    return f"{ML_DATASOURCE_BASE}/{base}.jsonl"
+
+async def check_project_status(org: str, proj: str):
+    status = {
+        "project_created": False,
+        "datasource_created": False,
+        "model_created": False,
+        "db_stored": False
+    }
+
+    # --- Step 1: Check project exists in Firestore ---
+    db = firestore.Client()
+        
+    org_ref  = db.collection("organizations").document(org)
+    proj_ref = org_ref.collection("projects").document(proj)
+
+    if proj_ref.get().exists:
+        status["project_created"] = True
+    else:
+        return (1, status)  # stop here
+    
+    # --- Step 2: Check datasource files exist ---
+    datasourcea_path = _datasource_path(org, proj)
+    if os.path.exists(datasourcea_path):
+        status["datasource_created"] = True
+    else:
+        return (2, status)
+
+    # --- Step 3: Check model files exist ---
+    model_path = _model_path(org, proj)
+    print(model_path)
+    if os.path.exists(model_path):
+        status["model_created"] = True
+    else:
+        return (3, status)
