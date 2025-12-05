@@ -95,12 +95,22 @@ def _tokenize_clean_text(texts: List[str]) -> List[List[str]]:
 
 def _build_dictionary(tokenized_docs: List[List[str]]):
     """
-    Mirip CountVectorizer(max_df=0.5, min_df=3):
-    - no_below=3  (muncul di >=3 dokumen)
-    - no_above=0.5 (muncul di <= 50% dokumen)
+    Mirip CountVectorizer, tapi dibuat adaptif ke jumlah dokumen:
+    - kalau n_docs < 10: jangan terlalu agresif (no_below=1, no_above=1.0)
+    - kalau n_docs cukup besar: gunakan rule ketat (no_below=3, no_above=0.5)
     """
     dictionary = corpora.Dictionary(tokenized_docs)
-    dictionary.filter_extremes(no_below=3, no_above=0.5)
+    n_docs = len(tokenized_docs)
+
+    if n_docs < 10:
+        # dataset kecil (seperti contoh 4 bug), jangan buang terlalu banyak kata
+        no_below = 1
+        no_above = 1.0
+    else:
+        no_below = 3
+        no_above = 0.5
+
+    dictionary.filter_extremes(no_below=no_below, no_above=no_above)
     dictionary.compactify()
     return dictionary
 
@@ -144,8 +154,32 @@ def train_lda_gensim(texts, num_topics=10, passes=12, auto_k=False, random_state
     auto_k saat ini diabaikan (param num_topics sudah ditentukan oleh resolve_lda_params).
     """
     tokenized_docs = _tokenize_clean_text(texts)
+
+    if not tokenized_docs:
+        raise ValueError("No documents provided for LDA (tokenized_docs kosong).")
+
+    # cek apakah ada setidaknya satu dokumen yang punya token
+    if not any(len(doc) > 0 for doc in tokenized_docs):
+        raise ValueError(
+            "All documents are empty after tokenization. "
+            "Check 'clean_text' values in bugs_clean.csv."
+        )
+
     dictionary = _build_dictionary(tokenized_docs)
+
+    if len(dictionary) == 0:
+        raise ValueError(
+            "Dictionary is empty after filter_extremes. "
+            "Likely dataset is very small or filter_extremes too strict."
+        )
+
     corpus = _build_corpus(dictionary, tokenized_docs)
+
+    if not corpus or all(len(bow) == 0 for bow in corpus):
+        raise ValueError(
+            "All BOWs are empty. No terms left for LDA. "
+            "Check preprocessing and dictionary filtering."
+        )
 
     lda_model = _fit_lda_gensim(
         corpus=corpus,
@@ -494,6 +528,10 @@ def main():
 
     texts = df["clean_text"].fillna("").astype(str).tolist()
 
+    # debug info
+    log_write(log_fh, f"[LDA][DEBUG] n_docs = {len(texts)}")
+    log_write(log_fh, f"[LDA][DEBUG] sample clean_text[0:3] = {texts[:3]}")
+
     log_write(log_fh, "[LDA] Training model…")
     if args.auto_topics_num:
         num_topics, passes = resolve_lda_params(
@@ -506,12 +544,22 @@ def main():
 
     log_write(log_fh, f"[LDA] NUM TOPICS : {num_topics} - PASSES : {passes} ")
 
-    lda_model, dictionary, topic_mat, chosen_k = train_lda_gensim(
-        texts, num_topics=num_topics, passes=passes, auto_k=args.auto_k, random_state=42
-    )
-    log_write(log_fh, f"[LDA] Model trained. num_topics={chosen_k}")
-    
-     # === Tambahan: simpan artefak model untuk dipakai online ===
+    try:
+        lda_model, dictionary, topic_mat, chosen_k = train_lda_gensim(
+            texts, num_topics=num_topics, passes=passes, auto_k=args.auto_k, random_state=42
+        )
+    except ValueError as e:
+        log_write(log_fh, f"[LDA][ERROR] {e}")
+        if log_fh:
+            try:
+                log_fh.close()
+            except Exception:
+                pass
+        sys.exit(1)
+
+    log_write(log_fh, f"[LDA] Model trained. num_topics={chosen_k}, vocab_size={len(dictionary)}")
+
+    # === Tambahan: simpan artefak model untuk dipakai online ===
     log_write(log_fh, "[LDA] Saving model artifacts for online inference…")
     dict_path = os.path.join(args.outdir, "lda_dictionary.dict")
     model_path = os.path.join(args.outdir, "lda_model.gensim")
@@ -531,7 +579,6 @@ def main():
         with open(bug_ids_path, "w", encoding="utf-8") as f:
             for i in range(len(df)):
                 f.write(f"{i}\n")
-                
 
     log_write(log_fh, "[LDA] Exporting topics & tables…")
     export_topics_gensim(lda_model, dictionary, args.outdir, args.topn_terms)
