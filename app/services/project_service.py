@@ -46,6 +46,22 @@ async def create_project_simple(
     proj_ref = org_ref.collection("projects").document(proj_slug)
     user_ref = db.collection("users").document(owner_uid)
 
+
+    # ---- CEK EXISTENCE PROJECT (under this org) ----
+    if proj_ref.get().exists:
+        # konsisten dengan permintaan user
+        raise ValueError("project already exist")
+
+    # ---- upsert ORGANIZATION ----
+    org_ref.set({
+        "name": organization_name,
+        "slug": org_slug,
+        "owner_uid": owner_uid,
+        "status": "active",
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+    
      # ---- add PROJECT ke users node (field projects) ----
     project_entry = {
         "org_id": org_slug,      # di screenshot: "idn"
@@ -96,8 +112,7 @@ async def get_organization(organization_name: str) -> Dict[str, Any]:
     Ambil data organisasi berdasarkan nama (bukan slug).
     Raise ValueError jika tidak ditemukan.
     """
-    org_slug = _slugify(organization_name)
-    org_ref = db.collection("organizations").document(org_slug)
+    org_ref = db.collection("organizations").document(organization_name)
     org_doc = org_ref.get()
 
     if not org_doc.exists:
@@ -106,8 +121,8 @@ async def get_organization(organization_name: str) -> Dict[str, Any]:
     data = org_doc.to_dict() or {}
     return {
         "organization_name": organization_name,
-        "org_slug": org_slug,
-        "organization_path": f"organizations/{org_slug}",
+        "org_slug": organization_name,
+        "organization_path": f"organizations/{organization_name}",
         "data": data,
     }
 
