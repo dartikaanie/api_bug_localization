@@ -14,6 +14,11 @@ from app.helper import _dbname
 
 from app.core.neo4j_conn import get_driver
 
+from google.cloud import firestore
+
+db = firestore.Client()
+
+
 # sudah ada sebelumnya:
 ML_ENGINE_DIR = Path(settings.ML_ENGINE_DIR)
 ML_PYTHON_BIN = settings.ML_PYTHON_BIN
@@ -294,3 +299,133 @@ async def check_project_status(org: str, proj: str) -> Tuple[int, Dict[str, Any]
     # PENTING: SELALU ADA RETURN DI PALING AKHIR
     # step 4 = sudah sampai cek DB (apapun hasil db_stored)
     return 4, status
+
+async def _clear_project_database(org_slug: str, proj_slug: str) -> int:
+    """
+    Menghapus semua node & relasi dari database Neo4j milik project.
+    Return: jumlah node sebelum dihapus (jika ingin tahu).
+    """
+    dbname = _dbname(org_slug, proj_slug)
+    driver = await get_driver()
+
+    try:
+        async with driver.session(database=dbname) as session:
+            # Hitung node dulu (optional)
+            count_res = await session.run("MATCH (n) RETURN count(n) AS cnt")
+            record = await count_res.single()
+            node_count = record["cnt"] if record else 0
+
+            # Delete all nodes
+            await session.run("MATCH (n) DETACH DELETE n")
+
+            return node_count
+
+    except Exception as e:
+        print(f"[ERROR] Failed clearing Neo4j DB for {dbname}: {e}")
+        return -1
+
+
+# ==== HELPER: remove project from all users ====
+
+async def _remove_project_from_all_users(org_slug: str, proj_slug: str) -> int:
+    """
+    Menghapus entry project (org_id, project_id) dari field array `projects`
+    di semua user yang punya project tsb.
+
+    Return: jumlah user yang di-update.
+    """
+    project_entry = {
+        "org_id": org_slug,
+        "project_id": proj_slug,
+    }
+
+    users_ref = db.collection("users")
+    # Karena struktur array-mu: [{org_id: "...", project_id: "..."}]
+    # kita bisa pakai array_contains dengan map yang identik.
+    query = users_ref.where("projects", "array_contains", project_entry)
+
+    updated = 0
+    for doc in query.stream():
+        doc.reference.update(
+            {
+                "projects": firestore.ArrayRemove([project_entry]),
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            }
+        )
+        updated += 1
+
+    return updated
+
+
+# ==== SERVICE: delete project ====
+async def delete_project(
+    organization_name: str,
+    project_name: str,
+    requester_uid: str,
+) -> Dict[str, Any]:
+    """
+    Hanya user yang login DAN merupakan member project
+    yang boleh menghapus project ini.
+    """
+
+    org_slug = _slugify(organization_name)
+    proj_slug = _slugify(project_name)
+
+    org_ref = db.collection("organizations").document(org_slug)
+    proj_ref = org_ref.collection("projects").document(proj_slug)
+
+    proj_doc = proj_ref.get()
+    if not proj_doc.exists:
+        raise ValueError(
+            f"Project '{project_name}' not found under organization '{organization_name}'"
+        )
+
+    # --- cek: user harus member project ---
+    is_member = await _user_is_project_member(requester_uid, organization_name, project_name)
+    if not is_member:
+        raise PermissionError("Only project members are allowed to delete this project.")
+
+    # --- hapus dari semua user ---
+    removed_from_users = await _remove_project_from_all_users(org_slug, proj_slug)
+
+    # --- clear Neo4j database project (hapus semua node & relasi) ---
+    cleared_nodes = await _clear_project_database(org_slug, proj_slug)
+
+    # --- hapus dokumen project di Firestore ---
+    proj_ref.delete()
+
+    return {
+        "organization_name": organization_name,
+        "project_name": project_name,
+        "org_slug": org_slug,
+        "project_slug": proj_slug,
+        "removed_from_users": removed_from_users,
+        "neo4j_nodes_deleted": cleared_nodes,
+        "status": "deleted",
+    }
+
+async def _user_is_project_member(
+    uid: str,
+    organization_name: str,
+    project_name: str,
+) -> bool:
+    """
+    Cek apakah user adalah member project.
+    Lihat di users/{uid}.projects yang bentuknya:
+    [{ "org_id": "idn", "project_id": "easyfix" }, ...]
+    """
+    org_slug = _slugify(organization_name)
+    proj_slug = _slugify(project_name)
+
+    user_ref = db.collection("users").document(uid)
+    doc = user_ref.get()
+    if not doc.exists:
+        return False
+
+    data = doc.to_dict() or {}
+    projects = data.get("projects", []) or []
+
+    return any(
+        (p.get("org_id") == org_slug and p.get("project_id") == proj_slug)
+        for p in projects
+    )

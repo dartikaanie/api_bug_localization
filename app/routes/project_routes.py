@@ -9,7 +9,8 @@ from app.services.project_service import (
     get_project,
     get_ml_status,
     check_ml_environment,
-    check_project_status
+    check_project_status,
+    delete_project,
 )
 from app.services.ml_runner_service import schedule_pipeline_for_project
 import os
@@ -68,6 +69,38 @@ async def create_project_endpoint(req: CreateProjectRequest,   bg: BackgroundTas
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
    
 
+
+# ==== DELETE PROJECT ====
+@router.delete("/deleteProject")
+async def delete_project_endpoint(
+    organization_name: str = Query(...),
+    project_name: str = Query(...),
+    current_user=Depends(get_current_user),
+):
+    """
+    Hanya user yang login dan terdaftar sebagai member project
+    yang boleh menghapus project.
+    """
+    try:
+        result = await delete_project(
+            organization_name=organization_name,
+            project_name=project_name,
+            requester_uid=current_user.uid,  # <-- ini kunci: pakai UID user yang login
+        )
+        return result
+
+    except PermissionError as e:
+        # user login tapi bukan member project
+        raise HTTPException(status_code=403, detail=str(e))
+
+    except ValueError as e:
+        # project tidak ditemukan
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+        print(f"[ERROR] delete_project_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete project")
+    
 
 @router.post("/{organization}/{project}/upload-datacollection")
 async def upload_datacollection(
@@ -431,6 +464,9 @@ async def project_status(org: str, proj: str, user = Depends(get_current_user) )
         "steps": steps
     }
 
+
+    
+# ==== DETAIL PROJECT ====   
 @router.get("/{organization}/{project}")
 async def get_users_in_project(organization: str, project: str, user=Depends(get_current_user)):
     

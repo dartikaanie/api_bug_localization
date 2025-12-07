@@ -1,9 +1,10 @@
 # app/services/organization_service.py
 from __future__ import annotations
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from firebase_admin import firestore
 from app.core.firebase import db
+from app.services.project_service import _remove_project_from_all_users
 
 def _slugify(s: str) -> str:
     s = s.strip().lower()
@@ -92,20 +93,51 @@ async def update_organization(org_slug: str, owner_uid: str, *, name: Optional[s
     ref.update(payload)
     return await get_organization(org_slug, owner_uid)
 
-# ===== DELETE (soft delete) =====
-async def delete_organization(org_slug: str, owner_uid: str) -> Dict:
-    ref = db.collection("organizations").document(org_slug)
-    snap = ref.get()
-    if not snap.exists:
-        raise ValueError("organization not found")
-    data = snap.to_dict() or {}
-    if data.get("owner_uid") != owner_uid:
-        raise PermissionError("forbidden")
+# ==== SERVICE: delete organization ====
 
-    # Soft delete: status=deleted + deleted_at
-    ref.update({
-        "status": "deleted",
-        "deleted_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    })
-    return {"org_slug": org_slug, "status": "deleted"}
+async def delete_organization(
+    organization_name: str,
+) -> Dict[str, Any]:
+    """
+    Menghapus satu organisasi:
+      - Hapus semua project di bawah organisasi tsb
+        (termasuk menghapus project dari user.projects)
+      - Hapus dokumen organization
+
+    NOTE: Kalau ada subcollection lain di bawah organization (selain `projects`),
+    perlu dihandle manual.
+    """
+
+    org_slug = _slugify(organization_name)
+    org_ref = db.collection("organizations").document(org_slug)
+
+    org_doc = org_ref.get()
+    if not org_doc.exists:
+        raise ValueError(f"Organization '{organization_name}' not found")
+
+    deleted_projects: list[str] = []
+    total_user_updates = 0
+
+    projects_col = org_ref.collection("projects")
+
+    # Loop semua project dalam organisasi
+    for proj_doc in projects_col.stream():
+        proj_slug = proj_doc.id
+
+        # Hapus project ini dari semua user
+        cnt = await _remove_project_from_all_users(org_slug, proj_slug)
+        total_user_updates += cnt
+
+        # Hapus dokumen project (dan kalau perlu, subcollection-nya)
+        proj_doc.reference.delete()
+        deleted_projects.append(proj_slug)
+
+    # Terakhir: hapus dokumen organization
+    org_ref.delete()
+
+    return {
+        "organization_name": organization_name,
+        "org_slug": org_slug,
+        "deleted_projects": deleted_projects,
+        "updated_users": total_user_updates,
+    }

@@ -22,7 +22,7 @@ def _uid(user) -> str | None:
     return user["uid"] if isinstance(user, dict) else getattr(user, "uid", None)
 
 # CREATE
-@router.post("", summary="Create organization")
+@router.post("/createOrganization", summary="Create organization")
 async def create_org(req: OrgCreateReq, user=Depends(get_current_user)):
     uid = _uid(user)
     if not uid:
@@ -34,6 +34,34 @@ async def create_org(req: OrgCreateReq, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+
+
+# ==== DELETE ORGANIZATION ====
+
+@router.delete("/deleteOrganization")
+async def delete_organization_endpoint(
+    organization_name: str = Query(...),
+    user=Depends(get_current_user)
+):
+    """
+    Hapus satu organization:
+      - Hapus semua projects di bawahnya
+      - Hapus referensi project dari semua users
+      - Hapus dokumen organization
+    """
+    uid = getattr(user, "uid", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        result = await delete_organization(organization_name)
+        return result
+    except ValueError as e:
+        # org tidak ditemukan
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] delete_organization_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete organization")
+
 
 # LIST (owner)
 @router.get("", summary="List organizations (owner)")
@@ -83,18 +111,4 @@ async def patch_org(org_slug: str, req: OrgUpdateReq, user=Depends(get_current_u
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {e}")
 
-# DELETE (soft)
-@router.delete("/{org_slug}", summary="Delete organization (soft)")
-async def delete_org(org_slug: str, user=Depends(get_current_user)):
-    uid = _uid(user)
-    if not uid:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        data = await delete_organization(org_slug, uid)
-        return {"status": "ok", "message": "Organization deleted", **data}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="forbidden")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
+
