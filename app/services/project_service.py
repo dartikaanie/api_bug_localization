@@ -63,6 +63,7 @@ async def create_project_simple(
         },
         merge=True,
     )
+
     
     # ---- create PROJECT ----
     proj_ref.set({
@@ -73,6 +74,7 @@ async def create_project_simple(
         "database_name": dbname,
         "data_collection_name": dbname,
         "owner_uid": owner_uid,
+        "members": firestore.ArrayUnion([owner_uid]),
         "status": "active",
         "updated_at": firestore.SERVER_TIMESTAMP,
         "created_at": firestore.SERVER_TIMESTAMP,
