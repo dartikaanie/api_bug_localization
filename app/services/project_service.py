@@ -44,22 +44,26 @@ async def create_project_simple(
 
     org_ref  = db.collection("organizations").document(org_slug)
     proj_ref = org_ref.collection("projects").document(proj_slug)
+    user_ref = db.collection("users").document(owner_uid)
 
-    # ---- CEK EXISTENCE PROJECT (under this org) ----
-    if proj_ref.get().exists:
-        # konsisten dengan permintaan user
-        raise ValueError("project already exist")
+     # ---- add PROJECT ke users node (field projects) ----
+    project_entry = {
+        "org_id": org_slug,      # di screenshot: "idn"
+        "project_id": proj_slug, # di screenshot: "easyfix"
+    }
 
-    # ---- upsert ORGANIZATION ----
-    org_ref.set({
-        "name": organization_name,
-        "slug": org_slug,
-        "owner_uid": owner_uid,
-        "status": "active",
-        "updated_at": firestore.SERVER_TIMESTAMP,
-        "created_at": firestore.SERVER_TIMESTAMP,
-    }, merge=True)
-
+    user_ref.set(
+        {
+            # ArrayUnion akan menambahkan item jika belum ada;
+            # kalau map-nya identik, Firestore tidak menduplikasi
+            "projects": firestore.ArrayUnion([project_entry]),
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            # optional: kalau user baru belum punya uid/created_at, bisa ditambah di sini
+            "uid": owner_uid,
+        },
+        merge=True,
+    )
+    
     # ---- create PROJECT ----
     proj_ref.set({
         "name": project_name,
