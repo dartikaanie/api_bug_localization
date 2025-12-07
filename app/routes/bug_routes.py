@@ -54,8 +54,8 @@ async def api_list_bugs(
             "limit": limit,
             "offset": offset,
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="NOK")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{str(e)}",)
         
 
 

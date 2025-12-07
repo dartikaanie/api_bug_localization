@@ -3,20 +3,23 @@ from __future__ import annotations
 
 from typing import List, Dict, Any, Optional
 import os
-import re
 import json
 
-from app.core.neo4j_conn import get_driver
+from fastapi import HTTPException, status
+from neo4j.exceptions import ServiceUnavailable, Neo4jError
+
 from app.models.bug import BugIn, BugOut
 from app.repositories.bug_repository import BugRepository
 from app.services.nlp_topic_service import get_nlp_topic_service
-from app.helper import _dbname
+from app.helper import _dbname, get_driver
 
 DEFAULT_SIM_THRESHOLD = 0.60
 DEFAULT_DUP_THRESHOLD = 0.80
 
 
-# ====== LISTING / DETAIL (langsung ke Neo4j via async driver) ======
+# ============================================================
+# LISTING / DETAIL (langsung ke Neo4j via async driver)
+# ============================================================
 
 async def list_bugs(
     organization_name: str,
@@ -24,24 +27,47 @@ async def list_bugs(
     limit: int = 50,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
+    """
+    Ambil daftar bug dasar untuk satu project.
+    """
     dbname = _dbname(organization_name, project_name)
-    driver = await get_driver()
 
     query = """
     MATCH (b:Bug)
     RETURN b.bug_id AS bug_id,
-        b.status AS status,
-        b.assigned_to as asignee,
-        b.clean_text as description,
-        b.summary as summary
+           b.status AS status,
+           b.assigned_to as asignee,
+           b.clean_text as description,
+           b.summary as summary
     ORDER BY b.bug_id
     SKIP $offset LIMIT $limit
     """
 
-    async with driver.session(database=dbname) as session:
-        result = await session.run(query, {"offset": offset, "limit": limit})
-        records = [dict(record) async for record in result]
-        
+    try:
+        driver = await get_driver()
+        async with driver.session(database=dbname) as session:
+            result = await session.run(query, {"offset": offset, "limit": limit})
+            records = [dict(record) async for record in result]
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{dbname}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     return records
 
@@ -51,6 +77,9 @@ async def get_bug_detail(
     project_name: str,
     bug_id: str,
 ) -> Optional[Dict[str, Any]]:
+    """
+    Ambil detail 1 bug beserta developer, project, dan topics terkait.
+    """
     dbname = _dbname(organization_name, project_name)
     driver = await get_driver()
 
@@ -65,9 +94,30 @@ async def get_bug_detail(
            collect(DISTINCT t) AS topics
     """
 
-    async with driver.session(database=dbname) as session:
-        result = await session.run(query, {"bug_id": bug_id})
-        record = await result.single()
+    try:
+        async with driver.session(database=dbname) as session:
+            result = await session.run(query, {"bug_id": bug_id})
+            record = await result.single()
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{dbname}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     if not record:
         return None
@@ -87,7 +137,9 @@ async def get_bug_detail(
     }
 
 
-# ===== Developers =====
+# ============================================================
+# DEVELOPERS
+# ============================================================
 
 async def list_developers(
     organization_name: str,
@@ -95,6 +147,9 @@ async def list_developers(
     limit: int = 50,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
+    """
+    Ambil daftar developer di project.
+    """
     dbname = _dbname(organization_name, project_name)
     driver = await get_driver()
 
@@ -105,9 +160,30 @@ async def list_developers(
     SKIP $offset LIMIT $limit
     """
 
-    async with driver.session(database=dbname) as session:
-        result = await session.run(query, {"offset": offset, "limit": limit})
-        records = [dict(record) async for record in result]
+    try:
+        async with driver.session(database=dbname) as session:
+            result = await session.run(query, {"offset": offset, "limit": limit})
+            records = [dict(record) async for record in result]
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{dbname}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     return records
 
@@ -115,8 +191,11 @@ async def list_developers(
 async def get_developer_detail(
     organization_name: str,
     project_name: str,
-    dev_key: str,   # bisa dev_id atau email
+    dev_key: str,   # bisa dev_id atau email (saat ini pakai dev_id)
 ) -> Optional[Dict[str, Any]]:
+    """
+    Ambil detail 1 developer beserta list bug yang pernah ditangani.
+    """
     dbname = _dbname(organization_name, project_name)
     driver = await get_driver()
 
@@ -128,24 +207,47 @@ async def get_developer_detail(
            collect(DISTINCT b) AS bugs
     """
 
-    async with driver.session(database=dbname) as session:
-        result = await session.run(query, {"k": dev_key})
-        record = await result.single()
+    try:
+        async with driver.session(database=dbname) as session:
+            result = await session.run(query, {"k": dev_key})
+            record = await result.single()
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{dbname}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     if not record:
         return None
 
     dev_node = record["dev"]
     dev = dev_node._properties if dev_node is not None else {}
-    bugs     = [n._properties for n in record["bugs"]     if n is not None]
+    bugs = [n._properties for n in record["bugs"] if n is not None]
 
     return {
         "developer": dev,
-        "bugs": bugs
+        "bugs": bugs,
     }
 
 
-# ===== Topics =====
+# ============================================================
+# TOPICS
+# ============================================================
 
 async def list_topics(
     organization_name: str,
@@ -153,26 +255,52 @@ async def list_topics(
     limit: int = 100,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
+    """
+    Ambil daftar topic LDA/Topic node.
+    """
     dbname = _dbname(organization_name, project_name)
     driver = await get_driver()
 
     query = """
     MATCH (t:Topic)
-    RETURN t.topic_id AS topic_id,
-           t.terms     AS terms,
-           t.topic_label   AS topic_label
+    RETURN t.topic_id    AS topic_id,
+           t.terms       AS terms,
+           t.topic_label AS topic_label
     ORDER BY t.topic_id
     SKIP $offset LIMIT $limit
     """
 
-    async with driver.session(database=dbname) as session:
-        result = await session.run(query, {"offset": offset, "limit": limit})
-        records = [dict(record) async for record in result]
+    try:
+        async with driver.session(database=dbname) as session:
+            result = await session.run(query, {"offset": offset, "limit": limit})
+            records = [dict(record) async for record in result]
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{dbname}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     return records
 
 
-# ====== CLASS BUG SERVICE (untuk addNewBug) ======
+# ============================================================
+# CLASS BUG SERVICE (untuk AddNewBug)
+# ============================================================
 
 def get_bug_service() -> "BugService":
     return BugService()
@@ -264,12 +392,33 @@ class BugService:
         bug_doc = {k: v for k, v in bug_doc.items() if v is not None}
 
         # (5) Save to Neo4j
-        await self.repo.create_bug_with_relations(
-            db_name=db_name,
-            bug=bug_doc,
-            similar_edges=similar_edges,
-            topic_edges=topic_edges,   # NEW
-        )
+        try:
+            await self.repo.create_bug_with_relations(
+                db_name=db_name,
+                bug=bug_doc,
+                similar_edges=similar_edges,
+                topic_edges=topic_edges,   # NEW
+            )
+        except ServiceUnavailable as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Neo4j unavailable when saving bug: {str(e)}",
+            )
+        except Neo4jError as e:
+            if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Database '{db_name}' not found",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Neo4j error while saving bug: {e.message}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unexpected error saving bug to Neo4j: {str(e)}",
+            )
 
         # (6) Response
         return BugOut(
@@ -288,49 +437,96 @@ class BugService:
         )
 
 
+# ============================================================
+# TRAINING / RECOMMENDER UTILITIES
+# ============================================================
 
-async def fetch_bug_dev_pairs(database: str):
+async def fetch_bug_dev_pairs(database: str) -> List[Dict[str, Any]]:
     """
     Mengambil:
-    - pasangan (bug, developer yang fix)
-    - developer lain sebagai negative sampling
+    - pasangan (bug, developer yang fix) sebagai positive sample
+    (negative sampling dilakukan di sisi ML engine).
     """
-
     driver = await get_driver()
 
     cypher = """
     MATCH (b:Bug)-[:ASSIGNED_TO]->(d:Developer)
     WHERE b.topic_id IS NOT NULL
-    AND b.status = "RESOLVED"
-    AND b.resolution = "FIXED"
+      AND b.status = "RESOLVED"
+      AND b.resolution = "FIXED"
     RETURN
-      b.bug_id AS bug_id,
-      d.dev_id AS developer_id,
+      b.bug_id   AS bug_id,
+      d.dev_id   AS developer_id,
       b.topic_id AS topic_id,
       b.component AS component,
-      b.summary AS summary
+      b.summary  AS summary
     """
 
-    async with driver.session(database=database) as session:
-        result = await session.run(cypher)
-        rows = [record async for record in result]
+    try:
+        async with driver.session(database=database) as session:
+            result = await session.run(cypher)
+            rows = [record async for record in result]
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{database}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
-
-    # hasil format list[Record]
     return [dict(r) for r in rows]
 
 
-async def fetch_all_developers(database: str):
+async def fetch_all_developers(database: str) -> List[Dict[str, Any]]:
+    """
+    Mengambil semua developer untuk kebutuhan rekomendasi / profiling.
+    """
     driver = await get_driver()
+
     cypher = """
     MATCH (d:Developer)
     RETURN
-      d.dev_id AS developer_id,
-      d.components AS components,
+      d.dev_id        AS developer_id,
+      d.components    AS components,
       d.last_active_at AS last_active_at
     """
-    async with driver.session(database=database) as session:
-        result = await session.run(cypher)
-        rows = [record async for record in result]
+
+    try:
+        async with driver.session(database=database) as session:
+            result = await session.run(cypher)
+            rows = [record async for record in result]
+    except ServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j unavailable: {str(e)}",
+        )
+    except Neo4jError as e:
+        if getattr(e, "code", "") == "Neo.ClientError.Database.DatabaseNotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Database '{database}' not found",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Neo4j query error: {e.message}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error querying Neo4j: {str(e)}",
+        )
 
     return [dict(r) for r in rows]

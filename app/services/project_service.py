@@ -1,7 +1,7 @@
 # app/services/project_service.py
 import re
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from firebase_admin import firestore
 from app.core.firebase import db
 
@@ -211,36 +211,65 @@ def _datasource_path(org: str, proj: str):
     base = f"{org}{proj}".lower()
     return f"{ML_DATASOURCE_BASE}/{base}.jsonl"
 
-async def check_project_status(org: str, proj: str):
-    status = {
+
+async def check_project_status(org: str, proj: str) -> Tuple[int, Dict[str, Any]]:
+    status: Dict[str, Any] = {
         "project_created": False,
         "datasource_created": False,
         "model_created": False,
-        "db_stored": False
+        "db_stored": False,
     }
 
     # --- Step 1: Check project exists in Firestore ---
-    db = firestore.Client()
-        
-    org_ref  = db.collection("organizations").document(org)
-    proj_ref = org_ref.collection("projects").document(proj)
+    try:
+        db = firestore.Client()
+        org_ref = db.collection("organizations").document(org)
+        proj_ref = org_ref.collection("projects").document(proj)
+        proj_doc = proj_ref.get()
 
-    if proj_ref.get().exists:
-        status["project_created"] = True
-    else:
-        return (1, status)  # stop here
-    
+        if proj_doc.exists:
+            status["project_created"] = True
+        else:
+            # project belum ada -> berhenti di step 1
+            return 1, status
+    except Exception as e:
+        print(f"[STATUS] Error checking project in Firestore: {e}")
+        # gagal cek project -> anggap belum lewat step 1
+        return 1, status
+
     # --- Step 2: Check datasource files exist ---
-    datasourcea_path = _datasource_path(org, proj)
-    if os.path.exists(datasourcea_path):
+    datasource_path = _datasource_path(org, proj)
+    if os.path.exists(datasource_path):
         status["datasource_created"] = True
     else:
-        return (2, status)
+        # datasource belum ada -> berhenti di step 2
+        return 2, status
 
     # --- Step 3: Check model files exist ---
     model_path = _model_path(org, proj)
-    print(model_path)
+    print(model_path)  # ini yang muncul di log: ml_engine/out_lda/idneasyfix/...
     if os.path.exists(model_path):
         status["model_created"] = True
     else:
-        return (3, status)
+        # model belum ada -> berhenti di step 3
+        return 3, status
+
+    # --- Step 4: Check data stored in Neo4j / DB ---
+    try:
+        driver = await get_driver()
+        dbname = _dbname(org, proj)
+
+        async with driver.session(database=dbname) as session:
+            result = await session.run("MATCH (b:Bug) RETURN count(b) AS cnt")
+            record = await result.single()
+            bug_count = record["cnt"] if record else 0
+
+        if bug_count > 0:
+            status["db_stored"] = True
+    except Exception as e:
+        print(f"[STATUS] Error checking db_stored in Neo4j: {e}")
+        # kalau cek DB error, jangan bikin API crash, anggap step 4 belum lewat
+
+    # PENTING: SELALU ADA RETURN DI PALING AKHIR
+    # step 4 = sudah sampai cek DB (apapun hasil db_stored)
+    return 4, status

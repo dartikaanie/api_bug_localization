@@ -1,7 +1,18 @@
 
 import re
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 import json
+from app.core.neo4j_conn import get_driver
+
+async def _get_driver():
+    try:
+        return await get_driver()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Neo4j connection failed: {str(e)}",
+        )
+
 
 def _dbname(org: str, proj: str) -> str:
     """
