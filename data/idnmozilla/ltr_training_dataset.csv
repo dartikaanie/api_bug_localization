@@ -1,0 +1,29 @@
+bug_id,developer_id,topic_id,component,label,bugs_fixed_total,bugs_fixed_topic,topic_match,component_match,recent_days
+1872559,mkmelin+mozilla@iki.fi,2,General,1,1.0,1.0,1.0,1.0,999.0
+1872559,kevin@kevinlocke.name,2,General,0,0.0,0.0,0.0,0.0,999.0
+1872559,intermittent-bug-filer@mozilla.bugs,2,General,0,0.0,0.0,0.0,0.0,999.0
+1872559,tcampbell@mozilla.com,2,General,0,0.0,0.0,0.0,0.0,999.0
+1872559,kcochrane@mozilla.com,2,General,0,1.0,0.0,0.0,0.0,999.0
+1872559,joshuacmarshall@gmail.com,2,General,0,0.0,0.0,0.0,0.0,999.0
+1872559,tnikkel@gmail.com,2,General,0,2.0,1.0,0.5,0.0,999.0
+1872560,kcochrane@mozilla.com,1,Firefox View,1,1.0,1.0,1.0,1.0,999.0
+1872560,kevin@kevinlocke.name,1,Firefox View,0,0.0,0.0,0.0,0.0,999.0
+1872560,mkmelin+mozilla@iki.fi,1,Firefox View,0,1.0,0.0,0.0,0.0,999.0
+1872560,tcampbell@mozilla.com,1,Firefox View,0,0.0,0.0,0.0,0.0,999.0
+1872560,intermittent-bug-filer@mozilla.bugs,1,Firefox View,0,0.0,0.0,0.0,0.0,999.0
+1872560,joshuacmarshall@gmail.com,1,Firefox View,0,0.0,0.0,0.0,0.0,999.0
+1872560,tnikkel@gmail.com,1,Firefox View,0,2.0,0.0,0.0,0.0,999.0
+1872563,tnikkel@gmail.com,3,Panning and Zooming,1,2.0,1.0,0.5,1.0,999.0
+1872563,kevin@kevinlocke.name,3,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872563,mkmelin+mozilla@iki.fi,3,Panning and Zooming,0,1.0,0.0,0.0,0.0,999.0
+1872563,tcampbell@mozilla.com,3,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872563,intermittent-bug-filer@mozilla.bugs,3,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872563,joshuacmarshall@gmail.com,3,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872563,kcochrane@mozilla.com,3,Panning and Zooming,0,1.0,0.0,0.0,0.0,999.0
+1872564,tnikkel@gmail.com,2,Panning and Zooming,1,2.0,1.0,0.5,1.0,999.0
+1872564,kevin@kevinlocke.name,2,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872564,mkmelin+mozilla@iki.fi,2,Panning and Zooming,0,1.0,1.0,1.0,0.0,999.0
+1872564,tcampbell@mozilla.com,2,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872564,intermittent-bug-filer@mozilla.bugs,2,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872564,joshuacmarshall@gmail.com,2,Panning and Zooming,0,0.0,0.0,0.0,0.0,999.0
+1872564,kcochrane@mozilla.com,2,Panning and Zooming,0,1.0,0.0,0.0,0.0,999.0

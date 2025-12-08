@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class Bug(BaseModel):
     bug_id: str
+    topic_id: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None

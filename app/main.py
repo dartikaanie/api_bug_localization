@@ -18,7 +18,7 @@ from app.routes.dashboard_routes import router as dashboard_router
 
 app = FastAPI(
     title="EasyFix API",
-    description="Platform bug resolution berbasis AI yang dirancang untuk mentransformasi cara tim rekayasa perangkat lunak menangani debugging.",
+    description="Platform bug resolution berbasis AI yang mengintegrasikan Machine Learning, dan Knowledge Graph untuk membantu developer menemukan dan memperbaiki bug lebih cepat dan relevan.",
     version="0.0.1",
 )
 

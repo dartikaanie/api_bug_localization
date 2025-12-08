@@ -90,6 +90,7 @@ async def search_relevant_bugs(
             bugs.append(
                 Bug(
                     bug_id=bug_id,
+                    topic_id = bug_node.get("topic_id"),
                     title=bug_node.get("summary"),
                     description=bug_node.get("clean_text"),
                     status=bug_node.get("status"),
