@@ -110,15 +110,15 @@ async def submit_bug_feedback(
                 "new_primary_score": rec2["new_topic_prob"],
             }
 
-        # =====================================================
-        # 👎 NOT RELEVANT → DECREASE WEIGHT
+          # =====================================================
+        # 👎 NOT RELEVANT → DECREASE WEIGHT (lebih robust)
         # =====================================================
         else:
+            # Turunkan weight pada relasi HAS_TOPIC yang sesuai topic_id
             result = await session.run(
                 """
-                MATCH (b:Bug {bug_id: $bug_id})
-                MATCH (t:Topic {topic_id: $topic_id})
-                MATCH (b)-[r:HAS_TOPIC]->(t)
+                MATCH (b:Bug {bug_id: $bug_id})-[r:HAS_TOPIC]->(t)
+                WHERE toString(t.topic_id) = toString($topic_id)
                 WITH r, coalesce(r.weight, 0) AS old_weight
                 SET r.weight = old_weight - 1
                 RETURN old_weight, r.weight AS new_weight
@@ -129,8 +129,9 @@ async def submit_bug_feedback(
 
             rec = await result.single()
 
-            # 🔴 TANGANI KALAU TIDAK ADA ROW / RELASI
             if rec is None:
+                # Kalau bener-bener tidak ada relasinya, kita tidak hard-fail 404,
+                # cukup balikin info ke FE.
                 raise HTTPException(
                     status_code=404,
                     detail=(
@@ -142,20 +143,19 @@ async def submit_bug_feedback(
             old_weight = rec["old_weight"]
             new_weight = rec["new_weight"]
 
-            # remove bad relations
+            # Hapus relasi yang sudah terlalu negatif
             await session.run(
                 """
-                MATCH (b:Bug {bug_id: $bug_id})
-                MATCH (t:Topic {topic_id: $topic_id})
-                MATCH (b)-[r:HAS_TOPIC]->(t)
-                WHERE coalesce(r.weight, 0) <= -2
+                MATCH (b:Bug {bug_id: $bug_id})-[r:HAS_TOPIC]->(t)
+                WHERE toString(t.topic_id) = toString($topic_id)
+                  AND coalesce(r.weight, 0) <= -2
                 DELETE r
                 """,
                 bug_id=bug_id,
                 topic_id=topic_id,
             )
 
-            # recalc primary
+            # Recalculate primary topic
             result2 = await session.run(
                 """
                 MATCH (b:Bug {bug_id: $bug_id})

@@ -23,13 +23,10 @@ def _normalize_semicolon_or_list(value) -> List[str]:
     """
     if value is None:
         return []
-    # kalau string, split by ';'
     if isinstance(value, str):
         return [s.strip() for s in value.split(";") if s.strip()]
-    # kalau list/tuple/set, konversi ke string & strip
     if isinstance(value, (list, tuple, set)):
         return [str(s).strip() for s in value if str(s).strip()]
-    # fallback: anggap single value
     return [str(value).strip()]
 
 
@@ -46,6 +43,7 @@ async def search_relevant_bugs(
     q_proc = preprocess_query(query)
     terms = q_proc["stems"]
 
+    # α = 0.2 untuk pengaruh feedback; bisa kamu adjust
     cypher = """
     MATCH (b:Bug)
     WITH b, $terms AS terms
@@ -53,14 +51,32 @@ async def search_relevant_bugs(
         toLower(coalesce(b.summary, ''))    CONTAINS t OR
         toLower(coalesce(b.clean_text, '')) CONTAINS t
     )
-    WITH b,
+
+    // Hitung skor berdasarkan kecocokan teks
+    WITH b, terms,
          size([t IN terms WHERE
             toLower(coalesce(b.summary, ''))    CONTAINS t OR
             toLower(coalesce(b.clean_text, '')) CONTAINS t
-         ]) AS score
-    ORDER BY score DESC, b.creation_time DESC
+         ]) AS text_score
+
+    // Gabungkan dengan feedback dari relasi HAS_TOPIC
+    OPTIONAL MATCH (b)-[r:HAS_TOPIC]->(:Topic)
+    WITH b,
+         text_score,
+         coalesce(max(r.weight), 0) AS topic_weight
+
+    // Final score = text_score + α * topic_weight
+    WITH b,
+         text_score,
+         topic_weight,
+         (text_score + 0.2 * topic_weight) AS final_score
+    ORDER BY final_score DESC, b.creation_time DESC
     LIMIT $limit
-    RETURN b AS bug, score
+
+    RETURN b AS bug,
+           text_score,
+           topic_weight,
+           final_score AS score
     """
 
     bugs: List[Bug] = []
@@ -70,7 +86,6 @@ async def search_relevant_bugs(
     commit_index: Dict[str, Commit] = {}
     commit_bugs: Dict[str, Set[str]] = {}
 
-    # kita pakai set untuk dedup edge
     edge_set: Set[tuple] = set()
 
     async with driver.session(database=dbname) as session:
@@ -82,7 +97,6 @@ async def search_relevant_bugs(
 
             bug_id = str(bug_node["bug_id"])
 
-            # --- normalize datetime ke string untuk Pydantic ---
             created_raw = bug_node.get("creation_time")
             created_at_str = str(created_raw) if created_raw is not None else None
 
@@ -90,7 +104,7 @@ async def search_relevant_bugs(
             bugs.append(
                 Bug(
                     bug_id=bug_id,
-                    topic_id = bug_node.get("topic_id"),
+                    topic_id=str(bug_node.get("topic_id")),
                     title=bug_node.get("summary"),
                     description=bug_node.get("clean_text"),
                     status=bug_node.get("status"),
@@ -102,7 +116,7 @@ async def search_relevant_bugs(
             # ---------- DEVELOPER ----------
             assigned = bug_node.get("assigned_to")
             if assigned:
-                dev_id = assigned   # gunakan email sebagai ID
+                dev_id = assigned
                 if dev_id not in dev_index:
                     dev_index[dev_id] = Developer(
                         developer_id=dev_id,
@@ -160,7 +174,6 @@ async def search_relevant_bugs(
     for commit_id, b_ids in commit_bugs.items():
         commit_index[commit_id].bug_ids = sorted(b_ids)
 
-    # convert edge_set -> list[RelationEdge]
     edges: List[RelationEdge] = [
         RelationEdge(
             source_type=s_t,
