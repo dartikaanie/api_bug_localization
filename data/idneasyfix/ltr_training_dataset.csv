@@ -1,5 +1,5 @@
 bug_id,developer_id,topic_id,component,label,bugs_fixed_total,bugs_fixed_topic,topic_match,component_match,recent_days
-1872559,mkmelin+mozilla@iki.fi,4,General,1,11.0,2.0,0.18181818181818182,1.0,999.0
+1872559,mkmelin+mozilla@iki.fi,4,General,1,11.0,1.0,0.09090909090909091,1.0,999.0
 1872559,nchevobbe@mozilla.com,4,General,0,8.0,0.0,0.0,1.0,999.0
 1872559,msirringhaus@suse.de,4,General,0,2.0,0.0,0.0,0.0,999.0
 1872559,pbone@mozilla.com,4,General,0,0.0,0.0,0.0,0.0,999.0
@@ -120,7 +120,7 @@ bug_id,developer_id,topic_id,component,label,bugs_fixed_total,bugs_fixed_topic,t
 1872628,mike@mikedilger.com,15,web-platform-tests,0,0.0,0.0,0.0,0.0,999.0
 1872628,tlong@mozilla.com,15,web-platform-tests,0,3.0,0.0,0.0,0.0,999.0
 1872628,alvaroc.dev@gmail.com,15,web-platform-tests,0,1.0,0.0,0.0,0.0,999.0
-1872632,mkmelin+mozilla@iki.fi,4,Preferences,1,11.0,2.0,0.18181818181818182,1.0,999.0
+1872632,mkmelin+mozilla@iki.fi,4,Preferences,1,11.0,1.0,0.09090909090909091,1.0,999.0
 1872632,nchevobbe@mozilla.com,4,Preferences,0,8.0,0.0,0.0,0.0,999.0
 1872632,msirringhaus@suse.de,4,Preferences,0,2.0,0.0,0.0,0.0,999.0
 1872632,pbone@mozilla.com,4,Preferences,0,0.0,0.0,0.0,0.0,999.0
