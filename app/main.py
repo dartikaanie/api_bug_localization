@@ -14,6 +14,7 @@ from app.routes.developer_routes import router as developer_router
 from app.routes.user_routes import router as user_router
 from app.routes.feedback_routes import router as feedback_router
 from app.routes.dashboard_routes import router as dashboard_router
+from app.routes.lda_eval_routes import router as ml_lda_router
 
 
 app = FastAPI(
@@ -47,3 +48,4 @@ app.include_router(topic_router)
 app.include_router(ltr_router)
 app.include_router(feedback_router)
 app.include_router(dashboard_router)
+app.include_router(ml_lda_router)
